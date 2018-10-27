@@ -77,3 +77,80 @@ object classic {
 }
 ```
 
+### Web crawler
+
+If 
+
+ * we can crawl one page
+ * we can crawl another page
+ * we can combine them
+
+We're in business! This is a common way of organising things in combinatorics.
+
+```scala
+def crawlIO[E: Monoid, A: Monoid](
+  seeds     : Set[URL],
+  router    : URL => Set[URL],
+  processor : (URL, String) => IO[E, A]): IO[Nothing, Crawl[E, A]] = ???
+```
+
+So the crawler can't fail, because of the `Nothing` in the `processor`, but 
+it could fail while parsing the `String` representation of the page for 
+example.
+
+We `foldLeft` over the seeds and build the program
+
+```scala
+processor : (URL, String) => IO[E, A]): IO[Nothing, Crawl[E, A]] = 
+  IO.traverse(seeds) { seed => 
+    ( ??? : IO[Nothing, Crawl[E, A]])
+  }.map(list => list.foldLeft(mzero[Crawl[E, A]])(_ |+| _))
+  // or
+//}.map(_.foldMap())
+```
+
+Folds over the elements using the zero of the Monoid as a starting point. And
+remember that `E` and `A` are monoids.
+
+`Crawl[E, A]` is a monoid.
+
+Progressing with the implementation we get...
+
+```scala
+processor : (URL, String) => IO[E, A]): IO[Nothing, Crawl[E, A]] = 
+  IO.traverse(seeds) { seed => 
+    getURL(seed).redeem(
+      // this is the empty crawl because of a bogus URL
+      _ => IO.point(mzero[Crawl[E, A]]),
+      html => 
+        processor(url, html)
+          .redeemPure(Crawl(_, mzero[A]), Crawl(mzero[E], _))
+    )
+  }.map(list => list.foldLeft(mzero[Crawl[E, A]])(_ |+| _))
+  // or
+//}.map(_.foldMap())
+```
+
+We now can crawl the seeds, but we want to crawl the links in the seeds, 
+so that our crawler can expand.
+
+```scala
+processor : (URL, String) => IO[E, A]): IO[Nothing, Crawl[E, A]] = 
+  IO.traverse(seeds) { seed => 
+    getURL(seed).redeem(
+      // this is the empty crawl because of a bogus URL
+      _ => IO.point(mzero[Crawl[E, A]]),
+      html => 
+        for {
+          crawl <- processor(url, html)
+            .redeemPure(Crawl(_, mzero[A]), Crawl(mzero[E], _))
+          urls = extractUrls(url, html).toSet.flatMap(router)
+          crawl2 <- crawlIO(urls, router, processor)
+        } yield crawl |+| crawl2
+        // this is where we combine
+    )
+  }.map(_.foldMap())
+```
+
+Of course this will loop infinitely if urlA has a link to urlB which has a 
+link to urlA, but it's a good point to stop and analyse the situation.
