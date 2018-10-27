@@ -15,7 +15,7 @@ RUN \
   dpkg -i sbt-$SBT_VERSION.deb && \
   rm sbt-$SBT_VERSION.deb && \
   apt-get update && \
-  apt-get install sbt vim && \
+  apt-get install sbt vim -y && \
   sbt sbtVersion
 
 WORKDIR /workspace

@@ -2,6 +2,11 @@
 
 "Abstraction" and "typeclass" are interchangeable in FP.
 
+Every function you write that happens to take more parameters is 
+combining something with something else, this is why Semigroups and 
+Monoids are so useful: they allow to compose in an extremely 
+generalised way.
+
 ### Semigroup 
 
 Append two `A`s into an `A`.
@@ -34,7 +39,7 @@ object algebra {
 
 One type class can build on another class.
 
-Is a type of typeclass that build on Semigroup.
+Is a type of typeclass that builds on Semigroup.
 
 ```scala
 trait Monoid[A] extends Semigroup [a] {
