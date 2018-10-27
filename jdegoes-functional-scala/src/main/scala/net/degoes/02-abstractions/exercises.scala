@@ -13,7 +13,13 @@ object algebra {
   //
   case class NotEmpty[+A](head: A, tail: Option[NotEmpty[A]])
   implicit def NotEmptySemigroup[A]: Semigroup[NotEmpty[A]] =
-    ???
+    new Semigroup[NotEmpty[A]] {
+      def append(l: NotEmpty[A], r: => NotEmpty[A]): NotEmpty[A] =
+        l.tail match {
+          case None => NotEmpty(l.head, Some(r))
+          case Some(tail) => NotEmpty(l.head, Some(append(tail, r)))
+        }
+    }
   val example1 = NotEmpty(1, None) |+| NotEmpty(2, None)
 
   //
@@ -22,7 +28,10 @@ object algebra {
   // Define a semigroup for `Max` that chooses the maximum of two values.
   //
   final case class Max(value: Int)
-  implicit val MaxSemigroup: Semigroup[Max] = ???
+  implicit val MaxSemigroup: Semigroup[Max] =
+    new Semigroup[Max] {
+      def append(l: Max, r: => Max): Max = if (l.value > r.value) l else r
+    }
 
   //
   // EXERCISE 3
@@ -40,7 +49,16 @@ object algebra {
   //
   // Define a `Semigroup` for `Option[A]` whenever `A` forms a `Semigroup`.
   //
-  implicit def OptionSemigroup[A: Semigroup]: Semigroup[Option[A]] = ???
+  implicit def OptionSemigroup[A: Semigroup]: Semigroup[Option[A]] = 
+    new Semigroup[Option[A]] { 
+      override def append(f1: Option[A], f2: => Option[A]): Option[A] = 
+        (f1, f2) match { 
+          case (None, None) => None 
+          case (Some(f1), None) => Some(f1) 
+          case (None, Some(f2)) => Some(f2) 
+          case (Some(f1), Some(f2)) => Some(f1 |+| f2) 
+        } 
+      }
 
   //
   // EXERCISE 5
@@ -51,7 +69,7 @@ object algebra {
   implicit def SemigroupTuple2[A: Semigroup, B: Semigroup]:
     Semigroup[(A, B)] = new Semigroup[(A, B)] {
       def append(l: (A, B), r: => (A, B)): (A, B) =
-        ???
+        (l._1 |+| r._1, l._2 |+| r._2)
     }
 
   //
@@ -60,7 +78,11 @@ object algebra {
   // Define a monoid for boolean conjunction (`&&`).
   //
   final case class Conj(value: Boolean)
-  implicit val ConjMonoid: Monoid[Conj] = ???
+  implicit val ConjMonoid: Monoid[Conj] = 
+    new Monoid[Conj] { 
+      override def zero: Conj = Conj(true) 
+      override def append(f1: Conj, f2: => Conj): Conj = Conj(f1.value && f2.value)
+    }
 
   //
   // EXERCISE 7
@@ -74,7 +96,18 @@ object algebra {
   //
   // Write the `Monoid` instance for `Map`.
   //
-  def SemigroupMap[K, V: Semigroup]: Semigroup[Map[K, V]] = ???
+  def SemigroupMap[K, V: Semigroup]: Semigroup[Map[K, V]] =
+    new Semigroup[Map[K, V]] {
+      def append(l: Map[K, V], r: => Map[K, V]): Map[K, V] =
+        (l.keys ++ r.keys).foldLeft[Map[K, V]](Map()) {
+          case (map, key) =>
+            val lv = l.get(key)
+            val rv = r.get(key)
+            val lrv = lv.flatMap(l => rv.map(r => l |+| r))
+
+            lrv.orElse(lv).orElse(rv).fold(map)(v => map + (key -> v))
+        }
+    }
 
   //
   // EXERCISE 9
@@ -94,9 +127,24 @@ object algebra {
     final case object Read extends Capability
     final case object Write extends Capability
   }
-  case class UserPermission(/* */)
-  implicit val MonoidUserPermission: Monoid[UserPermission] = ???
-  val example2 = mzero[UserPermission] |+| UserPermission(/* */)
+  case class UserPermission(value: Map[ResourceID, Set[(AccountID, Capability)]]) {
+    def allResources: Set[ResourceID] = value.keys.toSet
+
+    def capabilitiesFor(resourceID: ResourceID): Set[Capability] = 
+      value.getOrElse(resourceID, Set()).map(_._2)
+
+    def audit(resourceID: ResourceID, capability: Capability): Set[AccountID] = 
+      value.getOrElse(resourceID, Set()).filter(_._2 == capability).map(_._1)
+  }
+  implicit val MonoidUserPermission: Monoid[UserPermission] =
+    new Monoid[UserPermission] {
+      def zero: UserPermission = UserPermission(Map())
+
+      def append(l: UserPermission, r: => UserPermission): UserPermission =
+        UserPermission(l.value |+| r.value)
+    }
+
+  val example2 = mzero[UserPermission] |+| UserPermission(???)
 
   //
   // EXERCISE 10
@@ -132,8 +180,10 @@ object functor {
   case class Fork[A](left: BTree[A], right: BTree[A]) extends BTree[A]
   implicit val BTreeFunctor: Functor[BTree] =
     new Functor[BTree] {
-      def map[A, B](fa: BTree[A])(f: A => B): BTree[B] =
-        ???
+      def map[A, B](fa: BTree[A])(f: A => B): BTree[B] = fa match {
+        case Leaf(a)    => Leaf(f(a))
+        case Fork(l, r) => Fork(map(l)(f), map(r)(f))
+      }
     }
 
   //
@@ -141,7 +191,10 @@ object functor {
   //
   // Define an instance of `Functor` for `Nothing`.
   //
-  implicit val NothingFunctor: Functor[Nothing] = ???
+  implicit val NothingFunctor: Functor[Nothing] =
+    new Functor[Nothing] {
+      override def map[A, B](fa: Nothing)(f: A => B): Nothing = fa
+    }
 
   //
   // EXERCISE 3
@@ -164,7 +217,12 @@ object functor {
     implicit def ParserFunctor[E]: Functor[Parser[E, ?]] =
       new Functor[Parser[E, ?]] {
         def map[A, B](fa: Parser[E, A])(f: A => B): Parser[E, B] =
-           ???
+        Parser( s1 =>
+          fa.run(s1) match {
+            case Left(e)        => Left(e)
+            case Right((s2, a)) => Right(s2 -> f(a))
+          }
+        )
       }
   }
 
@@ -226,7 +284,9 @@ object functor {
   //
   // Define a natural transformation between `List` and `Option`.
   //
-  val ListToOption: List ~> Option = ???
+  val ListToOption: List ~> Option = new NaturalTransformation[List, Option] {
+    def apply[A](fa: List[A]): Option[A] = fa.headOption
+  }
 
   //
   // EXERCISE 9
