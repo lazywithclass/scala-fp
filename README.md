@@ -4,7 +4,21 @@ Following along John De Goes' course on [Functional Programming in Scala](https:
 
 ### Run
 
-Run the compiler in the Docker VM and code outside, it will sync.
+You will need docker, then run
+
+```bash
+$ make build
+$ make
+```
+
+Then in the Docker vm run
+
+```bash
+$ ./sbt
+sbt:Functional Scala> ~ compile
+```
+
+and code outside, code will be in sync.
 
 ### What I got from these three days
 
