@@ -154,3 +154,6 @@ processor : (URL, String) => IO[E, A]): IO[Nothing, Crawl[E, A]] =
 
 Of course this will loop infinitely if urlA has a link to urlB which has a 
 link to urlA, but it's a good point to stop and analyse the situation.
+
+It's impressive how we can now just swap `traverse` for `parTraverse`,
+and then have it all run in parallel.
